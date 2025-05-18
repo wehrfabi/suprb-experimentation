@@ -58,8 +58,8 @@ def is_classification(name: str) -> bool:
 
 
 @click.command()
-@click.option('-p', '--problem', type=click.STRING, default='abalone')
-@click.option('-l', '--local_model', type=click.STRING, default='elasticnet')
+@click.option('-p', '--problem', type=click.STRING, default='raisin')
+@click.option('-l', '--local_model', type=click.STRING, default='l1')
 def run(problem: str, local_model: str):
     print(f"Problem is {problem}, with local model {local_model}")
     isClassifier = is_classification(name=problem)
@@ -78,8 +78,8 @@ def run(problem: str, local_model: str):
     fitness = rule.fitness.VolumeWu()
     if isClassifier:
         models = Classifiers
-        tuning_scoring='accuracy'
-        evaluation_metric = ['accuracy', 'f1']
+        tuning_scoring ='accuracy'
+        evaluation_metric = tuning_scoring
         mixing = mixing_model.ErrorExperienceClassification()
 
 
@@ -201,7 +201,7 @@ def run(problem: str, local_model: str):
         swapped_experiment.with_random_states(random_states, n_jobs=random_amount)
 
         eval = CustomSwapEvaluation(dummy_estimator=estimator, X=X, y=y, random_state=random_state,
-                                            verbose=5, local_model=models[model], trained_estimators=trained_estimators, isClass=isClassifier)
+                                            verbose=5, local_model=models[model], trained_estimators=trained_estimators, isClassifier=isClassifier)
         experiment.perform(eval, cv=ShuffleSplit(
             n_splits=fold_amount, test_size=0.25, random_state=random_state), n_jobs=fold_amount)
         
@@ -209,25 +209,7 @@ def run(problem: str, local_model: str):
         print("log_experiment: " + str(log_experiment(swapped_experiment)))
         print("Results: " + str(getattr(swapped_experiment, 'results_', None)))
         print("Estimators: " + str(getattr(swapped_experiment, 'estimators_', None)))
+
         
-        '''
-        # Custom splitting and evaluation done manually
-        splitter = ShuffleSplit(n_splits=fold_amount, test_size=0.25, random_state=random_states[0])
-        for i, (train_index, test_index) in enumerate(splitter.split(X)):
-            X_train, X_test = X[train_index], X[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            estimator = trained_estimators[i]
-            estimator.model_swap_fit(model, X_train, y_train)
-            prediction = estimator.predict(X_test)
-            scorer = mean_squared_error if not isClass else accuracy_score
-            score = scorer(y_test, prediction)
-            name = f'{swapped_name} fold-{i}'
-            swapped_experiment = Experiment(name=name,  verbose=0)
-            swapped_experiment.estimators_ = [estimator]
-            result_dict = {'test_score': [score]}
-            swapped_experiment.results_ = result_dict
-            mlflow.set_experiment(name)
-            _log_experiment(swapped_experiment, parent_name=f'Swaps of {base_model}', depth=0)
-        '''
 if __name__ == '__main__':
     run()

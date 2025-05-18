@@ -5,14 +5,31 @@ from numbers import Integral
 from typing import Iterable
 
 import numpy as np
-from sklearn.base import BaseEstimator, clone, is_classifier
+from sklearn.base import BaseEstimator, clone, is_classifier, is_regressor
 from sklearn.metrics import get_scorer, mean_squared_error, accuracy_score
 from sklearn.model_selection import cross_validate, KFold
 
 from suprb.logging.default import DefaultLogger
+from suprb.suprb import SupRB
 
-def check_scoring(scoring):
-    """Always use R^2 and MSE for evaluation."""
+def check_scoring(scoring, estimator):
+    print(f"Initial scoring: {scoring}")
+    if isinstance(estimator, SupRB):
+        if estimator.isClassifier:
+            scoring = check_classification_scoring(scoring)
+        else:
+            scoring = check_regression_scoring(scoring)
+    elif is_classifier(estimator):
+        scoring = check_classification_scoring(scoring)
+    elif is_regressor(estimator):
+        scoring = check_regression_scoring(scoring)
+    else:
+        raise ValueError(f"Estimator {estimator} is neither a classifier nor a regressor.")
+    print(f"Processed scoring: {scoring}")
+    return list(scoring)
+
+def check_regression_scoring(scoring):
+    """Always use R^2 and MSE for evaluation on regression tasks."""
 
     if scoring is None:
         scoring = set()
@@ -24,8 +41,8 @@ def check_scoring(scoring):
 
     return list(scoring)
 
-def check_class_scoring(scoring):
-    """Always use R^2 and MSE for evaluation."""
+def check_classification_scoring(scoring):
+    """Always use f1 and accuracy for evaluation on classification tasks."""
 
     if scoring is None:
         scoring = set()
@@ -55,8 +72,8 @@ class Evaluation(metaclass=ABCMeta):
     def __call__(self, params: dict, **kwargs) -> tuple[list[BaseEstimator], dict]:
         pass
 
-class CustomUnfitEvaluation(Evaluation, metaclass=ABCMeta):
-    
+class CustomSwapEvaluation(Evaluation, metaclass=ABCMeta):
+    # Performs model swapping on a trained SupRB estimator and evaluates it
     def __init__(
             self,
             dummy_estimator: BaseEstimator,
@@ -66,19 +83,20 @@ class CustomUnfitEvaluation(Evaluation, metaclass=ABCMeta):
             verbose: int = 0,
             local_model: BaseEstimator = None,
             trained_estimators: list[BaseEstimator] = None,
-            isClass: bool = False
+            isClassifier: bool = False
     ):
         super().__init__(estimator=dummy_estimator, random_state=random_state, verbose=verbose)
         self.X = X
         self.y = y
         self.local_model = local_model
         self.trained_estimators = trained_estimators
-        self.isClass = isClass
+        self.isClassifier = isClassifier
     
     def __call__(self, **kwargs) -> tuple[list[BaseEstimator], dict]:
         cv = check_cv(kwargs.pop('cv', None), random_state=self.random_state)
         scores = []
         estimators = []
+        # scikit cross_validate can not be used as it refits the estimator
         for i, (train_index, test_index) in enumerate(cv.split(self.X)):
             X_train, X_test = self.X[train_index], self.X[test_index]
             y_train, y_test = self.y[train_index], self.y[test_index]
@@ -88,7 +106,7 @@ class CustomUnfitEvaluation(Evaluation, metaclass=ABCMeta):
             estimator.logger_.log_init(X_train, y_train, estimator)
             estimator.logger_.log_final(X_train, y_train, estimator)
             prediction = estimator.predict(X_test)
-            scorer = mean_squared_error if not self.isClass else accuracy_score
+            scorer = mean_squared_error if not self.isClassifier else accuracy_score
             scores.append(scorer(y_test, prediction))
             estimators.append(estimator)
         return estimators, {'test_score': [scores]}
@@ -98,8 +116,7 @@ class BaseCrossValidate(Evaluation, metaclass=ABCMeta):
     results_: dict
 
     def cross_validate(self, X: np.ndarray, y: np.ndarray, params: dict, **kwargs):
-        #scoring = check_scoring(kwargs.pop('scoring', None))
-        scoring = kwargs.pop('scoring', None)
+        scoring = check_scoring(kwargs.pop('scoring', None), self.estimator)
         cv = check_cv(kwargs.pop('cv', None), random_state=self.random_state)
 
         estimator = clone(self.estimator)

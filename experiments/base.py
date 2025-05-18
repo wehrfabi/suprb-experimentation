@@ -81,6 +81,8 @@ class Experiment:
                 with Parallel(n_jobs=self.n_jobs) as parallel:
                     self.experiments = parallel(delayed(experiment.perform)(evaluation=evaluation, **kwargs)
                                                 for experiment in self.experiments)
+                # Aggregate estimators from nested experiments
+                self.estimators_ = [estimator for experiment in self.experiments for estimator in experiment.estimators_]
             else:
                 params = self.params | tuned_params
                 self.estimators_, result = evaluation(params=params, **kwargs)

@@ -84,7 +84,8 @@ def run(problem: str, job_id: str):
 
     evaluation = CrossValidate(estimator=estimator, X=X, y=y, random_state=random_state, verbose=10)
 
-    experiment.perform(evaluation, cv=ShuffleSplit(n_splits=8, test_size=0.25, random_state=random_state), n_jobs=8)
+    # Ensure joblib parallel processing is correctly configured
+    experiment.perform(evaluation, cv=ShuffleSplit(n_splits=8, test_size=0.25, random_state=random_state), n_jobs=8, backend="loky", timeout=3600)
 
     mlflow.set_experiment(experiment_name)
     log_experiment(experiment)
